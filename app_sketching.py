@@ -2,19 +2,16 @@
 import cv2
 import numpy as np
 
-#from matplotlib import pyplot as plt
-# Check Environment    
-from stable_baselines3.common import env_checker
-from stable_baselines3 import DQN
-from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
+
+
+
 import time
 import serial
 import time
 import keyboard
 # Import os for file path management
 import os
-from trainer import TrainAndLoggingCallback
+
 
 SERVO_1_MIN = 200
 SERVO_1_NOLL=400
