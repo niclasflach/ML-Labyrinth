@@ -59,7 +59,8 @@ class LabyrintGame(Env):
 
         self.observation_space = Dict(
             {
-                "position": Box(low=0, high=255, shape=(2,), dtype=np.uint8),
+                "position_x": Box(low=0, high=255, shape=(1,), dtype=np.uint8),
+                "position_y": Box(low=0, high=255, shape=(1,), dtype=np.uint8),
                 "visited" : Box(low=0, high=255, shape=(200,200,1), dtype=np.uint8)
             }
         )
@@ -86,11 +87,12 @@ class LabyrintGame(Env):
         cv2.imshow("test", test)
         reward = -1
         if new_pos:
-            reward += 2
+            reward += 10
         info = {}
         if done:
             reward = -50
-        return observation, reward, done, info
+        truncated = False
+        return observation, reward, done,truncated, info
 
 
     def tilt_board(self, action):
@@ -149,8 +151,9 @@ class LabyrintGame(Env):
         self.changePos(
             self.servo1 + 10, self.servo2, SERVO_3_MIN, SERVO_4_NOLL, SERVO_5_NOLL
         )
-        observation, _, _ = self.get_observation()
-        return observation
+        observation, _,_ = self.get_observation()
+        info ={}
+        return observation, info
 
         while not new_game:
             print("väntar på att bollen rullar ner")
@@ -217,13 +220,7 @@ class LabyrintGame(Env):
                 except:
                     print("kan inte rita cirkel")
         # channel = np.reshape(red_ball, (3,200,200))
-        # Testar att byta ut rezised mot self.visited
-        position_of_ball = np.array((self.current_pos_x, self.current_pos_y), np.uint8)
-        observation = {
-            "visited": self.visited,
-            "position": position_of_ball
-            }
-
+        observation = {"position_x": self.current_pos_x , "position_y":self.current_pos_y, "visited": self.visited}
         return observation,red_ball,new_pos
 
 
@@ -248,7 +245,7 @@ debuggin = False
 
 if debuggin:
     while True:
-        obs, red_ball, new_pos,position = env.get_observation()
+        obs, red_ball, new_pos = env.get_observation()
         if env.get_done():
             print("spel slut...")
             time.sleep(3)
@@ -257,15 +254,13 @@ if debuggin:
             print("ny position")
         # if frame is read correctly ret is True
         # show pictures for testing
-        cv2.imshow("obs", obs)
+        cv2.imshow("obs", obs["visited"])
         cv2.imshow("red", red_ball)
-        observation = obs + position
-        print(observation.shape)
         if cv2.waitKey(1) == ord("q"):
             break
 
 else:
-    model = PPO("MultiInputPolicy", env, tensorboard_log=LOG_DIR, verbose=1)
-    model.learn(total_timesteps=10)
+    model = PPO("MultiInputPolicy", env,n_epochs=100000, tensorboard_log=LOG_DIR, verbose=1)
+    model.learn(total_timesteps=1000000)
 
 #, buffer_size=10000
