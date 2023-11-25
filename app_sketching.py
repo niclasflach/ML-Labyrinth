@@ -3,23 +3,23 @@ import numpy as np
 import time
 import serial
 import time
-
+import gymnasium as gym
+from gym.wrappers import FlattenObservation
 # import keyboard
 # Import os for file path management
 # using python 3.11.6 because i didnt manage to install torch and stable-baselines3 with newer version
 # pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113
 # pip install stable-baselines3[extra] protobuf==3.20.*
+
 from stable_baselines3.common import env_checker
-from stable_baselines3.common.callbacks import (
-    BaseCallback,
-)  # Skall försöka få till Callback
+from stable_baselines3.common.callbacks import BaseCallback
+
 import os
-from gym.spaces import Box, Discrete
-from gym import Env
-from stable_baselines3 import DQN
+from gymnasium.spaces import Box, Discrete, Dict
+from gymnasium import Env
+from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
-from gym.spaces import Box
 
 
 SERVO_1_MIN = 200
@@ -55,7 +55,14 @@ class LabyrintGame(Env):
     def __init__(self):
         super().__init__()
         # Define the observation space
-        self.observation_space = Box(low=0, high=255, shape=(200, 200, 2), dtype=np.uint8)
+        # Box(low=0, high=255, shape=(200, 200, 2), dtype=np.uint8)
+
+        self.observation_space = Dict(
+            {
+                "position": Box(low=0, high=255, shape=(2,), dtype=np.uint8),
+                "visited" : Box(low=0, high=255, shape=(200,200,1), dtype=np.uint8)
+            }
+        )
 
         self.current_pos_x = 0
         self.current_pos_y = 0
@@ -83,7 +90,6 @@ class LabyrintGame(Env):
         info = {}
         if done:
             reward = -50
-        observation = np.where(observation=='', '0', observation)
         return observation, reward, done, info
 
 
@@ -109,7 +115,7 @@ class LabyrintGame(Env):
         _ = arduino.readline()
         return True
 
-    def reset(self):
+    def reset(self, seed=None):
         time.sleep(1)
         new_game = False
         self.servo1 = SERVO_1_NOLL - 50
@@ -143,11 +149,12 @@ class LabyrintGame(Env):
         self.changePos(
             self.servo1 + 10, self.servo2, SERVO_3_MIN, SERVO_4_NOLL, SERVO_5_NOLL
         )
-        return
+        observation, _, _ = self.get_observation()
+        return observation
 
         while not new_game:
             print("väntar på att bollen rullar ner")
-            self.get_observation()
+            _,_,_ = self.get_observation()
             # print(self.ball_cord)
             # if self.ball_cord[0] > 130 and self.ball_cord[0]< 185 and self.ball_cord[1] > 95 and self.ball_cord[1]< 130:
             if not self.get_done():
@@ -212,7 +219,11 @@ class LabyrintGame(Env):
         # channel = np.reshape(red_ball, (3,200,200))
         # Testar att byta ut rezised mot self.visited
         position_of_ball = np.array((self.current_pos_x, self.current_pos_y), np.uint8)
-        observation = self.visited + position_of_ball
+        observation = {
+            "visited": self.visited,
+            "position": position_of_ball
+            }
+
         return observation,red_ball,new_pos
 
 
@@ -254,6 +265,7 @@ if debuggin:
             break
 
 else:
-    model = DQN("CnnPolicy", env, tensorboard_log=LOG_DIR, buffer_size=10000, verbose=1)
+    model = PPO("MultiInputPolicy", env, tensorboard_log=LOG_DIR, verbose=1)
     model.learn(total_timesteps=10)
 
+#, buffer_size=10000
