@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 import time
 import serial
-import time
 import gymnasium as gym
 from gym.wrappers import FlattenObservation
 # import keyboard
@@ -13,15 +12,13 @@ from gym.wrappers import FlattenObservation
 
 from stable_baselines3.common import env_checker
 from stable_baselines3.common.callbacks import BaseCallback
-
-import os
 from gymnasium.spaces import Box, Discrete, Dict
 from gymnasium import Env
 from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 
-
+# Servo positions
 SERVO_1_MIN = 200
 SERVO_1_NOLL = 400
 SERVO_1_MAX = 600
@@ -40,11 +37,6 @@ SERIAL_PORT = "COM5"  # När jag kör från PCn
 def ero_dia(img):
     kernel = np.ones((5, 5), np.uint8)
 
-    # The first parameter is the original image,
-    # kernel is the matrix with which image is
-    # convolved and third parameter is the number
-    # of iterations, which will determine how much
-    # you want to erode/dilate a given image.
     img_dilation = cv2.dilate(img, kernel, iterations=4)
     img_erosion = cv2.erode(img_dilation, kernel, iterations=4)
 
@@ -54,14 +46,12 @@ def ero_dia(img):
 class LabyrintGame(Env):
     def __init__(self):
         super().__init__()
-        # Define the observation space
-        # Box(low=0, high=255, shape=(200, 200, 2), dtype=np.uint8)
 
         self.observation_space = Dict(
             {
                 "position_x": Box(low=0, high=255, shape=(1,), dtype=np.uint8),
                 "position_y": Box(low=0, high=255, shape=(1,), dtype=np.uint8),
-                "visited" : Box(low=0, high=255, shape=(200,200,1), dtype=np.uint8)
+                "visited": Box(low=0, high=255, shape=(200, 200, 1), dtype=np.uint8),
             }
         )
 
@@ -75,16 +65,13 @@ class LabyrintGame(Env):
         self.ball_cord = [0, 0, 0]
         self.visited = np.zeros((200, 200, 1), np.uint8)
 
-
     def step(self, action):
         action_map = {0: "up", 1: "down", 2: "left", 3: "right", 4: "no_action"}
         if action != 4:
-            # pydirectinput.press(action_map[action])
             self.tilt_board(action_map[action])
             pass
         done = self.get_done()
         observation, test, new_pos = self.get_observation()
-        cv2.imshow("test", test)
         reward = -1
         if new_pos:
             reward += 10
@@ -92,8 +79,7 @@ class LabyrintGame(Env):
         if done:
             reward = -50
         truncated = False
-        return observation, reward, done,truncated, info
-
+        return observation, reward, done, truncated, info
 
     def tilt_board(self, action):
         if action == "up" and self.servo1 > SERVO_1_MIN:
@@ -151,42 +137,39 @@ class LabyrintGame(Env):
         self.changePos(
             self.servo1 + 10, self.servo2, SERVO_3_MIN, SERVO_4_NOLL, SERVO_5_NOLL
         )
-        observation, _,_ = self.get_observation()
-        info ={}
-        return observation, info
+        observation, _, _ = self.get_observation()
+        info = {}
 
         while not new_game:
             print("väntar på att bollen rullar ner")
-            _,_,_ = self.get_observation()
-            # print(self.ball_cord)
-            # if self.ball_cord[0] > 130 and self.ball_cord[0]< 185 and self.ball_cord[1] > 95 and self.ball_cord[1]< 130:
+            _, _, _ = self.get_observation()
             if not self.get_done():
                 print("hittat boll")
                 new_game = True
-        print("OMSTART")
-        return True
+        return observation, info
 
     def render(self):
-        cv2.imshow("Game", self.current_frame)
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            self.close()
+        cv2.imshow("Game", self.visited)
+        return
 
     def get_observation(self):
-        ret, raw = cam.read()
+        ret, raw = cam.read()  # try to grab a picture from the camera
         new_pos = False
         if not ret:
             print("Can't receive frame (stream end?). Exiting ...")
-        # Try to isolate the red marble
-        hsv = cv2.cvtColor(raw, cv2.COLOR_BGR2HSV)
-        # (hMin = 56 , sMin = 133, vMin = 24), (hMax = 84 , sMax = 255, vMax = 121)
+        # Try to isolate the green
+        hsv = cv2.cvtColor(raw, cv2.COLOR_BGR2HSV)  # convert image to hsv
+        # masking for green color
         lower_red = np.array([56, 133, 24])
         upper_red = np.array([84, 255, 121])
         mask = cv2.inRange(hsv, lower_red, upper_red)
 
-        red_ball_raw = cv2.bitwise_and(hsv, hsv, mask=mask)
         resized = cv2.resize(raw[0:700, 300:1000], (200, 200))
-        red_ball = ero_dia(mask)
+        red_ball = ero_dia(
+            mask
+        )  # Erode and dialate the result to remove small dots etc
         red_ball = cv2.resize(red_ball[0:700, 300:1000], (200, 200))
+        # try to detect ball in the resulting picture
         ball_position = cv2.HoughCircles(
             red_ball,
             cv2.HOUGH_GRADIENT,
@@ -197,9 +180,11 @@ class LabyrintGame(Env):
             minRadius=2,
             maxRadius=100,
         )
+        # what if ball is not detected
         if ball_position is None:
             self.undetected_frame += 1
 
+        # and if the ball is detected
         if ball_position is not None:
             ball_position = np.uint16(np.around(ball_position))
             # print(len(ball_position))
@@ -215,14 +200,18 @@ class LabyrintGame(Env):
                         new_pos = True
                         # cv2.circle(self.visited, (i[0],i[1]), 1, 1, -1)
                         self.visited[i[1], i[0]] = 255
-                        print(f"Bollens positions: y{i[0]} y{i[1]}  ")
+                        # print(f"Bollens positions: y{i[0]} y{i[1]}  ")
                         # print("Ny pixel")
                 except:
+                    print(f"Failing coordinates:{i[0]} {i[1]}")
                     print("kan inte rita cirkel")
         # channel = np.reshape(red_ball, (3,200,200))
-        observation = {"position_x": self.current_pos_x , "position_y":self.current_pos_y, "visited": self.visited}
-        return observation,red_ball,new_pos
-
+        observation = {
+            "position_x": self.current_pos_x,
+            "position_y": self.current_pos_y,
+            "visited": self.visited,
+        }
+        return observation, red_ball, new_pos
 
     def get_done(self):
         done = False
@@ -260,7 +249,10 @@ if debuggin:
             break
 
 else:
-    model = PPO("MultiInputPolicy", env,n_epochs=100000, tensorboard_log=LOG_DIR, verbose=1)
+    model = PPO(
+        "MultiInputPolicy", env, n_epochs=100000, tensorboard_log=LOG_DIR, verbose=1
+    )
     model.learn(total_timesteps=1000000)
 
-#, buffer_size=10000
+# , buffer_size=10000
+
