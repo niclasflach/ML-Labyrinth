@@ -3,7 +3,6 @@ import numpy as np
 import time
 import serial
 import gymnasium as gym
-from gym.wrappers import FlattenObservation
 # import keyboard
 # Import os for file path management
 # using python 3.11.6 because i didnt manage to install torch and stable-baselines3 with newer version
@@ -19,19 +18,19 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 
 # Servo positions
-SERVO_1_MIN = 200
-SERVO_1_NOLL = 400
-SERVO_1_MAX = 600
-SERVO_2_MIN = 200
-SERVO_2_NOLL = 400
-SERVO_2_MAX = 600
+SERVO_1_MIN = 100
+SERVO_1_NOLL = 220
+SERVO_1_MAX = 400
+SERVO_2_MIN = 100
+SERVO_2_NOLL = 225
+SERVO_2_MAX = 400
 SERVO_3_NOLL = 175
 SERVO_3_MIN = 175
 SERVO_3_MAX = 495
-SERVO_4_NOLL = 150
+SERVO_4_NOLL = 215
 SERVO_5_NOLL = 500
 # SERIAL_PORT = "/dev/ttyUSB0" # När jag kör från Linux
-SERIAL_PORT = "COM5"  # När jag kör från PCn
+SERIAL_PORT = "COM6"  # När jag kör från PCn
 
 
 def ero_dia(img):
@@ -106,37 +105,18 @@ class LabyrintGame(Env):
     def reset(self, seed=None):
         time.sleep(1)
         new_game = False
-        self.servo1 = SERVO_1_NOLL - 50
-        self.servo2 = SERVO_2_NOLL - 80
+        self.servo1 = SERVO_1_NOLL
+        self.servo2 = SERVO_2_NOLL
         self.changePos(
-            self.servo1, self.servo2, SERVO_3_MIN, SERVO_4_NOLL, SERVO_5_NOLL - 200
+            self.servo1, self.servo2, SERVO_3_MIN, SERVO_4_NOLL, SERVO_5_NOLL
         )
+
         self.visited = np.zeros((200, 200, 1), np.uint8)
         print("Resetting")
-        time.sleep(2)
-        self.changePos(
-            self.servo1 + 10,
-            self.servo2,
-            SERVO_3_MIN,
-            SERVO_4_NOLL + 100,
-            SERVO_5_NOLL - 200,
-        )
-        time.sleep(1)
-        self.changePos(
-            self.servo1 + 10, self.servo2, SERVO_3_MAX, SERVO_4_NOLL, SERVO_5_NOLL - 200
-        )
-        self.changePos(
-            self.servo1 + 10, self.servo2, SERVO_3_MAX, SERVO_4_NOLL, SERVO_5_NOLL - 200
-        )
-        print("lägger tillbaka bollen")
-        time.sleep(1)
-        self.changePos(
-            self.servo1 + 10, self.servo2, SERVO_3_MIN, SERVO_4_NOLL, SERVO_5_NOLL
-        )
-        time.sleep(1)
-        self.changePos(
-            self.servo1 + 10, self.servo2, SERVO_3_MIN, SERVO_4_NOLL, SERVO_5_NOLL
-        )
+        time.sleep(3)
+        self.changePos(self.servo1 + 10, self.servo2, SERVO_3_MAX, 485, SERVO_5_NOLL)
+        time.sleep(1.5)
+        self.changePos(self.servo1 + 10, self.servo2, SERVO_3_MAX, 215, SERVO_5_NOLL)
         observation, _, _ = self.get_observation()
         info = {}
 
@@ -149,7 +129,8 @@ class LabyrintGame(Env):
         return observation, info
 
     def render(self):
-        cv2.imshow("Game", self.visited)
+        _, camera_picture, _ = self.get_observation()
+        cv2.imshow("Game", camera_picture)
         return
 
     def get_observation(self):
@@ -228,7 +209,7 @@ arduino = serial.Serial(port=SERIAL_PORT, baudrate=9600, timeout=0.1)
 env = LabyrintGame()
 CHECKPOINT_DIR = "./train/"
 LOG_DIR = "./logs/"
-
+env.reset()
 
 debuggin = False
 
@@ -249,10 +230,9 @@ if debuggin:
             break
 
 else:
-    model = PPO(
-        "MultiInputPolicy", env, n_epochs=100000, tensorboard_log=LOG_DIR, verbose=1
-    )
-    model.learn(total_timesteps=1000000)
+    model = PPO("MultiInputPolicy", env, tensorboard_log=LOG_DIR, verbose=1)
+
+    model.learn(100)
 
 # , buffer_size=10000
 
