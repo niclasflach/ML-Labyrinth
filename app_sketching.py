@@ -3,6 +3,8 @@ import numpy as np
 import time
 import serial
 import gymnasium as gym
+import math
+import os
 # import keyboard
 # Import os for file path management
 # using python 3.11.6 because i didnt manage to install torch and stable-baselines3 with newer version
@@ -18,12 +20,12 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 
 # Servo positions
-SERVO_1_MIN = 100
+SERVO_1_MIN = 120
 SERVO_1_NOLL = 220
-SERVO_1_MAX = 400
-SERVO_2_MIN = 100
+SERVO_1_MAX = 320
+SERVO_2_MIN = 125
 SERVO_2_NOLL = 225
-SERVO_2_MAX = 400
+SERVO_2_MAX = 325
 SERVO_3_NOLL = 175
 SERVO_3_MIN = 175
 SERVO_3_MAX = 495
@@ -31,6 +33,9 @@ SERVO_4_NOLL = 215
 SERVO_5_NOLL = 500
 # SERIAL_PORT = "/dev/ttyUSB0" # När jag kör från Linux
 SERIAL_PORT = "COM6"  # När jag kör från PCn
+
+
+
 
 
 def ero_dia(img):
@@ -48,14 +53,14 @@ class LabyrintGame(Env):
 
         self.observation_space = Dict(
             {
-                "position_x": Box(low=0, high=255, shape=(1,), dtype=np.uint8),
-                "position_y": Box(low=0, high=255, shape=(1,), dtype=np.uint8),
-                "visited": Box(low=0, high=255, shape=(200, 200, 1), dtype=np.uint8),
-                "servoPosition1": Box(low=0, high=800,shape(1,), dtype=np.uint8 ),
-                "servoPosition2": Box(low=0, high=800,shape(1,), dtype=np.uint8 )
+                "position_x": Box(low=0, high=255,shape=(1,), dtype=np.uint8),
+                "position_y": Box(low=0, high=255,shape=(1,), dtype=np.uint8),
+                "visited": Box(low=0, high=255,shape=(200, 200, 1), dtype=np.uint8),
+                "servoPosition1": Box(low=0, high=800,  shape=(1,), dtype=np.uint8 ),
+                "servoPosition2": Box(low=0, high=800,  shape=(1,), dtype=np.uint8 ),
             }
         )
-
+        self.pois = []
         self.current_pos_x = 0
         self.current_pos_y = 0
         self.action_space = Discrete(5)
@@ -72,13 +77,15 @@ class LabyrintGame(Env):
             self.tilt_board(action_map[action])
             pass
         done = self.get_done()
-        observation, test, new_pos = self.get_observation()
+        observation, test, new_pos, waypoint_reached = self.get_observation()
         reward = -1
-        if new_pos:
-            reward += 10
+        if not new_pos:
+            reward -= 1
+        if waypoint_reached:
+            reward += 100
         info = {}
         if done:
-            reward = -50
+            reward = -500
         truncated = False
         return observation, reward, done, truncated, info
 
@@ -105,6 +112,19 @@ class LabyrintGame(Env):
         return True
 
     def reset(self, seed=None):
+        self.pois = []
+        #Ladda in lista med Waypoints från fil
+        with open('poi.txt') as f:
+            for line in f:
+                line = line.strip()
+                tmp = line.split(",")
+                try:
+                    self.pois.append((int(tmp[0]), int(tmp[1])))
+                    #result.append((eval(tmp[0]), eval(tmp[1])))
+                except:pass
+        #plocka upp första i listan och sätta som point of interest
+        self.poi = self.pois.pop(0)
+        print(f"Point to reach{self.poi}")
         time.sleep(1)
         new_game = False
         self.servo1 = SERVO_1_NOLL
@@ -119,12 +139,12 @@ class LabyrintGame(Env):
         self.changePos(self.servo1 + 10, self.servo2, SERVO_3_MAX, 485, SERVO_5_NOLL)
         time.sleep(1.5)
         self.changePos(self.servo1 + 10, self.servo2, SERVO_3_MAX, 215, SERVO_5_NOLL)
-        observation, _, _ = self.get_observation()
+        observation, _, _,_ = self.get_observation()
         info = {}
 
         while not new_game:
             #print("väntar på att bollen rullar ner")
-            _, _, _ = self.get_observation()
+            _, _, _,_ = self.get_observation()
             if not self.get_done():
                 #print("hittat boll")
                 new_game = True
@@ -138,6 +158,7 @@ class LabyrintGame(Env):
     def get_observation(self):
         ret, raw = cam.read()  # try to grab a picture from the camera
         new_pos = False
+        waypoint_reached = False
         if not ret:
             print("Can't receive frame (stream end?). Exiting ...")
         # Try to isolate the green
@@ -176,7 +197,7 @@ class LabyrintGame(Env):
                 self.current_pos_x = i[1]
                 self.current_pos_y = i[0]
                 self.undetected_frame = 0
-                self.ball_cord = i
+                self.ball_cord = (i[0],i[1])
                 try:
                     cv2.circle(resized, (i[0], i[1]), 3, (0, 0, 255), 4)
                     if self.visited[i[1], i[0]] == 0:
@@ -185,18 +206,25 @@ class LabyrintGame(Env):
                         self.visited[i[1], i[0]] = 255
                         # print(f"Bollens positions: y{i[0]} y{i[1]}  ")
                         # print("Ny pixel")
+                    if math.dist(self.ball_cord, self.poi) < 7:
+                        waypoint_reached = True
+                        self.poi = self.pois.pop(0)
+                        print(f"New point to reach:{self.poi}")
+                    
                 except:
-                    print(f"Failing coordinates:{i[0]} {i[1]}")
-                    print("kan inte rita cirkel")
+                    pass
+                    #print(f"Failing coordinates:{i[0]} {i[1]}")
+                    #print("kan inte rita cirkel")
+            #print(f"distance is: {math.dist(self.ball_cord, self.poi)}")
         # channel = np.reshape(red_ball, (3,200,200))
         observation = {
             "position_x": self.current_pos_x,
             "position_y": self.current_pos_y,
             "visited": self.visited,
-            "servoPosition_1": self.servo1,
-            "servoPosition_2": self.servo2
+            "servoPosition1": self.servo1,
+            "servoPosition2": self.servo2
         }
-        return observation, red_ball, new_pos
+        return observation, red_ball, new_pos, waypoint_reached
 
     def get_done(self):
         done = False
@@ -235,9 +263,15 @@ if debuggin:
 
 else:
 
-    model = PPO("MultiInputPolicy", env, tensorboard_log=LOG_DIR, verbose=1,n_steps=1000)
+    model_path ="model.zip"
+
+    if os.path.exists(model_path):
+        model = PPO.load(model_path, env)
+    else:
+        model = PPO("MultiInputPolicy", env, tensorboard_log=LOG_DIR, verbose=1,n_steps=10000)
     for i in range(300): 
         model.learn(total_timesteps=300000, progress_bar=True)
-
+        print("saving model....")
+        model.save(model_path)
 # , buffer_size=10000
 
