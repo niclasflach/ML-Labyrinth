@@ -51,6 +51,8 @@ class LabyrintGame(Env):
                 "position_x": Box(low=0, high=255, shape=(1,), dtype=np.uint8),
                 "position_y": Box(low=0, high=255, shape=(1,), dtype=np.uint8),
                 "visited": Box(low=0, high=255, shape=(200, 200, 1), dtype=np.uint8),
+                "servoPosition1": Box(low=0, high=800,shape(1,), dtype=np.uint8 ),
+                "servoPosition2": Box(low=0, high=800,shape(1,), dtype=np.uint8 )
             }
         )
 
@@ -121,10 +123,10 @@ class LabyrintGame(Env):
         info = {}
 
         while not new_game:
-            print("väntar på att bollen rullar ner")
+            #print("väntar på att bollen rullar ner")
             _, _, _ = self.get_observation()
             if not self.get_done():
-                print("hittat boll")
+                #print("hittat boll")
                 new_game = True
         return observation, info
 
@@ -191,6 +193,8 @@ class LabyrintGame(Env):
             "position_x": self.current_pos_x,
             "position_y": self.current_pos_y,
             "visited": self.visited,
+            "servoPosition_1": self.servo1,
+            "servoPosition_2": self.servo2
         }
         return observation, red_ball, new_pos
 
@@ -230,9 +234,10 @@ if debuggin:
             break
 
 else:
-    model = PPO("MultiInputPolicy", env, tensorboard_log=LOG_DIR, verbose=1)
 
-    model.learn(100)
+    model = PPO("MultiInputPolicy", env, tensorboard_log=LOG_DIR, verbose=1,n_steps=1000)
+    for i in range(300): 
+        model.learn(total_timesteps=300000, progress_bar=True)
 
 # , buffer_size=10000
 
