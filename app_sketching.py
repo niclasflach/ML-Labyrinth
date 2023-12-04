@@ -1,23 +1,25 @@
-import cv2
-import numpy as np
-import time
-import serial
-import gymnasium as gym
 import math
 import os
+import time
+
+import cv2
+import gymnasium as gym
+import numpy as np
+import serial
+from gymnasium import Env
+from gymnasium.spaces import Box, Dict, Discrete
+from stable_baselines3 import PPO
+from stable_baselines3.common import env_checker
+from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
+
 # import keyboard
 # Import os for file path management
 # using python 3.11.6 because i didnt manage to install torch and stable-baselines3 with newer version
 # pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113
 # pip install stable-baselines3[extra] protobuf==3.20.*
 
-from stable_baselines3.common import env_checker
-from stable_baselines3.common.callbacks import BaseCallback
-from gymnasium.spaces import Box, Discrete, Dict
-from gymnasium import Env
-from stable_baselines3 import PPO
-from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 
 # Servo positions
 SERVO_1_MIN = 120
@@ -32,10 +34,7 @@ SERVO_3_MAX = 495
 SERVO_4_NOLL = 215
 SERVO_5_NOLL = 500
 # SERIAL_PORT = "/dev/ttyUSB0" # När jag kör från Linux
-SERIAL_PORT = "COM6"  # När jag kör från PCn
-
-
-
+SERIAL_PORT = "COM7"  # När jag kör från PCn
 
 
 def ero_dia(img):
@@ -47,17 +46,25 @@ def ero_dia(img):
     return img_erosion
 
 
+def callback(i, reward):
+    # if i % 100 == 0:
+    #    print("Iteration:", i, "Reward:", reward)
+    pass
+
+
 class LabyrintGame(Env):
     def __init__(self):
         super().__init__()
 
         self.observation_space = Dict(
             {
-                "position_x": Box(low=0, high=255,shape=(1,), dtype=np.uint8),
-                "position_y": Box(low=0, high=255,shape=(1,), dtype=np.uint8),
-                "visited": Box(low=0, high=255,shape=(200, 200, 1), dtype=np.uint8),
-                "servoPosition1": Box(low=0, high=800,  shape=(1,), dtype=np.uint8 ),
-                "servoPosition2": Box(low=0, high=800,  shape=(1,), dtype=np.uint8 ),
+                "position_x": Box(low=0, high=255, shape=(1,), dtype=np.uint8),
+                "position_y": Box(low=0, high=255, shape=(1,), dtype=np.uint8),
+                "visited": Box(low=0, high=255, shape=(200, 200, 1), dtype=np.uint8),
+                "servoPosition1": Box(low=0, high=800, shape=(1,), dtype=np.uint8),
+                "servoPosition2": Box(low=0, high=800, shape=(1,), dtype=np.uint8),
+                "distanceToPoi": Box(low=0, high=1000, shape=(1,), dtype=np.uint8),
+                "nextPoi": Box(low=0, high=1000, shape=(2,), dtype=np.uint8),
             }
         )
         self.pois = []
@@ -68,14 +75,14 @@ class LabyrintGame(Env):
         self.servo2 = SERVO_2_NOLL
         self.speed = 25
         self.undetected_frame = 0
-        self.ball_cord = [0, 0, 0]
+        self.ball_cord = [0, 0]
         self.visited = np.zeros((200, 200, 1), np.uint8)
 
     def step(self, action):
         action_map = {0: "up", 1: "down", 2: "left", 3: "right", 4: "no_action"}
         if action != 4:
             self.tilt_board(action_map[action])
-            pass
+        done = False
         done = self.get_done()
         observation, test, new_pos, waypoint_reached = self.get_observation()
         reward = -1
@@ -113,16 +120,17 @@ class LabyrintGame(Env):
 
     def reset(self, seed=None):
         self.pois = []
-        #Ladda in lista med Waypoints från fil
-        with open('poi.txt') as f:
+        # Ladda in lista med Waypoints från fil
+        with open("poi.txt") as f:
             for line in f:
                 line = line.strip()
                 tmp = line.split(",")
                 try:
                     self.pois.append((int(tmp[0]), int(tmp[1])))
-                    #result.append((eval(tmp[0]), eval(tmp[1])))
-                except:pass
-        #plocka upp första i listan och sätta som point of interest
+                    # result.append((eval(tmp[0]), eval(tmp[1])))
+                except:
+                    pass
+        # plocka upp första i listan och sätta som point of interest
         self.poi = self.pois.pop(0)
         print(f"Point to reach{self.poi}")
         time.sleep(1)
@@ -139,23 +147,32 @@ class LabyrintGame(Env):
         self.changePos(self.servo1 + 10, self.servo2, SERVO_3_MAX, 485, SERVO_5_NOLL)
         time.sleep(1.5)
         self.changePos(self.servo1 + 10, self.servo2, SERVO_3_MAX, 215, SERVO_5_NOLL)
-        observation, _, _,_ = self.get_observation()
+        observation, _, _, _ = self.get_observation()
+        self.undetected_frame = 0
         info = {}
 
         while not new_game:
-            #print("väntar på att bollen rullar ner")
-            _, _, _,_ = self.get_observation()
+            # print("väntar på att bollen rullar ner")
+            _, _, _, _ = self.get_observation()
             if not self.get_done():
-                #print("hittat boll")
+                # print("hittat boll")
                 new_game = True
         return observation, info
 
     def render(self):
+        """
+        function to render output, however this is not used att the moment
+        """
         _, camera_picture, _ = self.get_observation()
         cv2.imshow("Game", camera_picture)
-        return
+        return True
 
     def get_observation(self):
+        """
+        function to get observation.
+        return the state of the game in some sense.
+        This function changes quite a lot at this moment.
+        """
         ret, raw = cam.read()  # try to grab a picture from the camera
         new_pos = False
         waypoint_reached = False
@@ -197,7 +214,7 @@ class LabyrintGame(Env):
                 self.current_pos_x = i[1]
                 self.current_pos_y = i[0]
                 self.undetected_frame = 0
-                self.ball_cord = (i[0],i[1])
+                self.ball_cord = (i[0], i[1])
                 try:
                     cv2.circle(resized, (i[0], i[1]), 3, (0, 0, 255), 4)
                     if self.visited[i[1], i[0]] == 0:
@@ -210,19 +227,24 @@ class LabyrintGame(Env):
                         waypoint_reached = True
                         self.poi = self.pois.pop(0)
                         print(f"New point to reach:{self.poi}")
-                    
+
                 except:
                     pass
-                    #print(f"Failing coordinates:{i[0]} {i[1]}")
-                    #print("kan inte rita cirkel")
-            #print(f"distance is: {math.dist(self.ball_cord, self.poi)}")
+                    # print(f"Failing coordinates:{i[0]} {i[1]}")
+                    # print("kan inte rita cirkel")
+            # print(f"distance is: {math.dist(self.ball_cord, self.poi)}")
         # channel = np.reshape(red_ball, (3,200,200))
+        # print(self.ball_cord)
+        # print(self.poi)
+
         observation = {
             "position_x": self.current_pos_x,
             "position_y": self.current_pos_y,
             "visited": self.visited,
             "servoPosition1": self.servo1,
-            "servoPosition2": self.servo2
+            "servoPosition2": self.servo2,
+            "distanceToPoi": math.dist(self.ball_cord, self.poi),
+            "nextPoi": self.poi,
         }
         return observation, red_ball, new_pos, waypoint_reached
 
@@ -262,16 +284,22 @@ if debuggin:
             break
 
 else:
-
-    model_path ="model.zip"
+    model_path = "./model_med_poi.zip"
 
     if os.path.exists(model_path):
         model = PPO.load(model_path, env)
     else:
-        model = PPO("MultiInputPolicy", env, tensorboard_log=LOG_DIR, verbose=1,n_steps=10000)
-    for i in range(300): 
-        model.learn(total_timesteps=300000, progress_bar=True)
+        model = PPO(
+            "MultiInputPolicy",
+            env,
+            batch_size=10000,
+            tensorboard_log=LOG_DIR,
+            verbose=1,
+            n_steps=1000000,
+            learning_rate=0.009,
+        )
+    for i in range(300):
+        model.learn(total_timesteps=20000, progress_bar=True)
         print("saving model....")
         model.save(model_path)
 # , buffer_size=10000
-
