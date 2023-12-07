@@ -1,4 +1,7 @@
 /venv/
 /logs/
 /model_med_poi.*
+*.zip
+/*.zip
+
 
