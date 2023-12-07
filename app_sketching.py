@@ -37,7 +37,6 @@ SERVO_5_NOLL = 500
 SERIAL_PORT = "COM7"  # När jag kör från PCn
 WAYPOINT_PRECISION = 5
 
-
 def ero_dia(img):
     kernel = np.ones((5, 5), np.uint8)
 
@@ -240,6 +239,7 @@ class LabyrintGame(Env):
         # print(self.ball_cord)
         # print(self.poi)
         resized = np.array(resized, dtype=np.uint8)
+
         observation = {
             "picture": resized,
             "position_x": self.current_pos_x,
