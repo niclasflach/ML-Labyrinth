@@ -266,7 +266,7 @@ cam = cv2.VideoCapture(0)
 arduino = serial.Serial(port=SERIAL_PORT, baudrate=9600, timeout=0.1)
 env = LabyrintGame()
 CHECKPOINT_DIR = "./train/"
-LOG_DIR = "./logs/"
+LOG_DIR = "./logs_absolute/"
 env.reset()
 
 debuggin = False
@@ -303,7 +303,7 @@ else:
             learning_rate=0.009,
         )
     for i in range(300):
-        model.learn(total_timesteps=20000, progress_bar=True)
+        model.learn(total_timesteps=20000, progress_bar=True,)
         print("saving model....")
         model.save(model_path)
 # , buffer_size=10000
