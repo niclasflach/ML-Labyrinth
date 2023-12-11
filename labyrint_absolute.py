@@ -22,12 +22,12 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 
 
 # Servo positions
-SERVO_1_MIN = 170
-SERVO_1_NOLL = 220
-SERVO_1_MAX = 270
-SERVO_2_MIN = 170
-SERVO_2_NOLL = 220
-SERVO_2_MAX = 270
+SERVO_1_MIN = 292
+SERVO_1_NOLL = 304
+SERVO_1_MAX = 314
+SERVO_2_MIN = 404
+SERVO_2_NOLL = 414
+SERVO_2_MAX = 426
 SERVO_3_NOLL = 175
 SERVO_3_MIN = 175
 SERVO_3_MAX = 495
@@ -35,7 +35,7 @@ SERVO_4_NOLL = 215
 SERVO_5_NOLL = 500
 # SERIAL_PORT = "/dev/ttyUSB0" # När jag kör från Linux
 SERIAL_PORT = "COM7"  # När jag kör från PCn
-WAYPOINT_PRECISION = 5
+WAYPOINT_PRECISION = 8
 
 def ero_dia(img):
     kernel = np.ones((5, 5), np.uint8)
@@ -86,9 +86,11 @@ class LabyrintGame(Env):
         done = False
         done = self.get_done()
         observation, test, new_pos, waypoint_reached = self.get_observation()
-        reward = 0
+        reward = 1
+        
+        reward += 50 - math.dist(self.ball_cord, self.poi)
         if not new_pos:
-            reward -= 1
+            reward = 0
         if waypoint_reached:
             reward += 100
         info = {}
@@ -153,7 +155,7 @@ class LabyrintGame(Env):
         print("Resetting")
         time.sleep(3)
         self.changePos(self.servo1 , self.servo2, SERVO_3_MAX, 485, SERVO_5_NOLL)
-        time.sleep(1.5)
+        time.sleep(2.5)
         self.changePos(self.servo1 , self.servo2, SERVO_3_MAX, 215, SERVO_5_NOLL)
         observation, _, _, _ = self.get_observation()
         self.undetected_frame = 0
@@ -268,8 +270,14 @@ class LabyrintGame(Env):
         cv2.destroyAllWindows()
 
 def zero_servos():
-    arduino.write(bytes("220,220,175,215,500\n", "utf-8"))
+    #
+    command = (
+                str(SERVO_1_NOLL) + "," + str(SERVO_2_NOLL) + "," + str(SERVO_3_MIN) + "," + str(SERVO_4_NOLL) + "," + str(SERVO_5_NOLL) + "\n"
+            )
+
+    arduino.write(bytes(command, "utf-8"))
     _ = arduino.readline()
+    print("zeroing servos")
     cv2.waitKey(1000)
     return True
 
@@ -281,7 +289,7 @@ LOG_DIR = "./logs/"
 env.reset()
 
 debuggin = False
-
+zero_servos()
 if debuggin:
     while True:
         obs, red_ball, new_pos = env.get_observation()
@@ -310,11 +318,13 @@ else:
             batch_size=10000,
             tensorboard_log=LOG_DIR,
             verbose=1,
-            n_steps=10000,
-            learning_rate=0.009,
+            n_steps=1000,
+            learning_rate=0.01,
+            gamma=0.99,
+
         )
     for i in range(300):
-        model.learn(total_timesteps=20000, progress_bar=True,)
+        model.learn(total_timesteps=30000, progress_bar=True,log_interval=1000)
         print("saving model....")
         model.save(model_path)
 # , buffer_size=10000

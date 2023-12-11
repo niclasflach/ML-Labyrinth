@@ -22,12 +22,12 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 
 
 # Servo positions
-SERVO_1_MIN = 120
-SERVO_1_NOLL = 220
-SERVO_1_MAX = 320
-SERVO_2_MIN = 125
-SERVO_2_NOLL = 225
-SERVO_2_MAX = 325
+SERVO_1_MIN = 292
+SERVO_1_NOLL = 304
+SERVO_1_MAX = 314
+SERVO_2_MIN = 404
+SERVO_2_NOLL = 414
+SERVO_2_MAX = 426
 SERVO_3_NOLL = 175
 SERVO_3_MIN = 175
 SERVO_3_MAX = 495
@@ -35,7 +35,9 @@ SERVO_4_NOLL = 215
 SERVO_5_NOLL = 500
 # SERIAL_PORT = "/dev/ttyUSB0" # När jag kör från Linux
 SERIAL_PORT = "COM7"  # När jag kör från PCn
-WAYPOINT_PRECISION = 5
+WAYPOINT_PRECISION = 8
+ADJUSTMENT = 5
+
 
 def ero_dia(img):
     kernel = np.ones((5, 5), np.uint8)
@@ -72,7 +74,7 @@ class LabyrintGame(Env):
         self.pois = []
         self.current_pos_x = 0
         self.current_pos_y = 0
-        self.action_space = Discrete(5)
+        self.action_space = Discrete(7)
         self.servo1 = SERVO_1_NOLL
         self.servo2 = SERVO_2_NOLL
         self.speed = 25
@@ -81,17 +83,18 @@ class LabyrintGame(Env):
         self.visited = np.zeros((200, 200, 1), np.uint8)
 
     def step(self, action):
-        action_map = {0: "up", 1: "down", 2: "left", 3: "right", 4: "no_action"}
-        if action != 4:
-            self.tilt_board(action_map[action])
+        action_map = {0: "up", 1: "down", 2: "left", 3: "right", 4: "updown", 5: "leftright", 6: "no_action"}
+        self.tilt_board(action_map[action])
         done = False
         done = self.get_done()
         observation, test, new_pos, waypoint_reached = self.get_observation()
-        reward = 0
+        reward = 1
+        
+        reward += 50 - math.dist(self.ball_cord, self.poi)
         if not new_pos:
-            reward -= 1
+            reward = 0
         if waypoint_reached:
-            reward += 100
+            reward += 50
         info = {}
         if done:
             reward = -200
@@ -100,13 +103,20 @@ class LabyrintGame(Env):
 
     def tilt_board(self, action):
         if action == "up" and self.servo1 > SERVO_1_MIN:
-            self.servo1 -= self.speed
+            self.servo1 -= ADJUSTMENT
         if action == "down" and self.servo1 < SERVO_1_MAX:
-            self.servo1 += self.speed
+            self.servo1 += ADJUSTMENT
+        if action == "updown":
+            self.servo1 = SERVO_1_NOLL
+        if action == "leftright":
+            self.servo2 = SERVO_2_NOLL
         if action == "left" and self.servo2 > SERVO_2_MIN:
-            self.servo2 -= self.speed
+            self.servo2 -= ADJUSTMENT
         if action == "right" and self.servo2 < SERVO_2_MAX:
-            self.servo2 += self.speed
+            self.servo2 += ADJUSTMENT
+        if action == "no_action":
+            self.servo1 = SERVO_1_NOLL
+            self.servo2 = SERVO_2_NOLL
         self.changePos(
             self.servo1, self.servo2, SERVO_3_NOLL, SERVO_4_NOLL, SERVO_5_NOLL
         )
@@ -146,16 +156,18 @@ class LabyrintGame(Env):
         self.visited = np.zeros((200, 200, 1), np.uint8)
         print("Resetting")
         time.sleep(3)
-        self.changePos(self.servo1 + 10, self.servo2, SERVO_3_MAX, 485, SERVO_5_NOLL)
+        self.changePos(self.servo1 , self.servo2, SERVO_3_MAX, 485, SERVO_5_NOLL)
+        time.sleep(2.5)
+        self.changePos(self.servo1 , self.servo2, SERVO_3_MAX, 215, SERVO_5_NOLL)
         time.sleep(1.5)
-        self.changePos(self.servo1 + 10, self.servo2, SERVO_3_MAX, 215, SERVO_5_NOLL)
-        observation, _, _, _ = self.get_observation()
-        self.undetected_frame = 0
+        while self.undetected_frame > 30:
+            observation, _, _, _ = self.get_observation()
         info = {}
 
         while not new_game:
             # print("väntar på att bollen rullar ner")
-            _, _, _, _ = self.get_observation()
+            observation, _, _, _ = self.get_observation()
+            
             if not self.get_done():
                 # print("hittat boll")
                 new_game = True
@@ -261,16 +273,42 @@ class LabyrintGame(Env):
     def close(self):
         cv2.destroyAllWindows()
 
+def zero_servos():
+    #
+    command = (
+                str(SERVO_1_NOLL) + "," + str(SERVO_2_NOLL) + "," + str(SERVO_3_MIN) + "," + str(SERVO_4_NOLL) + "," + str(SERVO_5_NOLL) + "\n"
+            )
+
+    arduino.write(bytes(command, "utf-8"))
+    _ = arduino.readline()
+    print("zeroing servos")
+    cv2.waitKey(1000)
+    return True
+
+class TensorboardCallback(BaseCallback):
+    """
+    Custom callback for plotting additional values in tensorboard.
+    """
+
+    def __init__(self, verbose=0):
+        super(TensorboardCallback, self).__init__(verbose)
+
+    def _on_step(self) -> bool:
+        # Log scalar value (here a random variable)
+        value = np.random.random()
+        self.logger.record('random_value', value)
+        return True
+
 
 cam = cv2.VideoCapture(0)
 arduino = serial.Serial(port=SERIAL_PORT, baudrate=9600, timeout=0.1)
 env = LabyrintGame()
 CHECKPOINT_DIR = "./train/"
-LOG_DIR = "./logs_absolute/"
+LOG_DIR = "./logs/"
 env.reset()
 
 debuggin = False
-
+zero_servos()
 if debuggin:
     while True:
         obs, red_ball, new_pos = env.get_observation()
@@ -288,7 +326,7 @@ if debuggin:
             break
 
 else:
-    model_path = "./model_med_poi.zip"
+    model_path = "./model_relative.zip"
 
     if os.path.exists(model_path):
         model = PPO.load(model_path, env)
@@ -296,14 +334,16 @@ else:
         model = PPO(
             "MultiInputPolicy",
             env,
-            batch_size=10000,
+            batch_size=1000,
             tensorboard_log=LOG_DIR,
             verbose=1,
-            n_steps=10000,
-            learning_rate=0.009,
+            n_steps=1000,
+            learning_rate=0.01,
+            gamma=0.99,
+
         )
     for i in range(300):
-        model.learn(total_timesteps=20000, progress_bar=True,log_interval=1000)
+        model.learn(total_timesteps=1000, progress_bar=True,log_interval=1000, callback=TensorboardCallback(LOG_DIR))
         print("saving model....")
         model.save(model_path)
 # , buffer_size=10000

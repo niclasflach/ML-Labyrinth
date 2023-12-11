@@ -6,14 +6,14 @@ import keyboard
 import pygame
 
 
-arduino = serial.Serial(port="COM6", baudrate=9600, timeout=0.1)
+arduino = serial.Serial(port="COM7", baudrate=9600, timeout=0.1)
 
-a = 400
-b = 360
+a = 308
+b = 412
 c = 400
 d = 215
 e = 400
-speed = 45
+speed = 2
 
 
 def changePos(a, b, c, d, e):

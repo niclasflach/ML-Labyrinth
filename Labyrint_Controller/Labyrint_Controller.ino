@@ -9,7 +9,7 @@
 
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
-/
+
 #define SERVOMIN  150 // This is the 'minimum' pulse length count (out of 4096)
 #define SERVOMAX  600 // This is the 'maximum' pulse length count (out of 4096)
 #define USMIN  600 // This is the rounded 'minimum' microsecond length based on the minimum pulse of 150
@@ -21,10 +21,10 @@ uint8_t servonum = 0;
 String command;
 
 //Initial position of the servos
-int servo_a = 300;
-int servo_b = 300;
+int servo_a = 308;
+int servo_b = 412;
 int servo_c = 300;
-int servo_d = 300;
+int servo_d = 215;
 int servo_e = 300; 
 
 
@@ -60,7 +60,7 @@ void loop() {
     // Serial.println(servo_d);
     // Serial.println(servo_e);
   }
-  /
+  
   pwm.setPWM(0,0, servo_a);
   pwm.setPWM(1,0, servo_b);
   pwm.setPWM(2,0, servo_c);
