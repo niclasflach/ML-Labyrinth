@@ -42,4 +42,7 @@ Steg i processen
 	förmodligen behöver måla/tejpa vissa objekt så dom sticker ut färgmässigt.
 	två ytterliggare servon kommer monteras på labyrintspelet för att lyfta upp kula och återplacera den i det fall
 	kulan faller ner i ett hål.
-	
+
+
+Länk till youtube clip: https://youtu.be/eRL-nGpOlwY
+
