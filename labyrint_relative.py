@@ -305,7 +305,7 @@ arduino = serial.Serial(port=SERIAL_PORT, baudrate=9600, timeout=0.1)
 env = LabyrintGame()
 CHECKPOINT_DIR = "./train/"
 LOG_DIR = "./logs/"
-env.reset()
+#env.reset()
 
 debuggin = False
 zero_servos()

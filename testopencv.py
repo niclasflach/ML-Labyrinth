@@ -50,7 +50,7 @@ while True:
     if ball_position is not None:
         ball_position = np.uint16(np.around(ball_position))
         for coor in ball_position[0,:]:
-            print(coor)
+            print(coor[0], coor[1])
             try:
                 cv.circle(resized, (coor[0], coor[1]), coor[2], (0, 0, 255), 1 )
                 noll = coor[0]
@@ -59,6 +59,10 @@ while True:
             except:
                 pass
 
+    scale_up_x = 2
+    scale_up_y = 2
+    resized = cv.resize(resized, None, fx= scale_up_x, fy= scale_up_y, interpolation= cv.INTER_LINEAR)
+    mask = cv.resize(mask, None, fx= scale_up_x, fy= scale_up_y, interpolation= cv.INTER_LINEAR)
 
     cv.imshow("resized", resized)
     cv.imshow("mask", mask)
